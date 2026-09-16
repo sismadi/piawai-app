@@ -82,74 +82,63 @@ async function resolveHalaman() {
 // ============================================================
 // Penyusun SEKSI landing page (kolom `halaman.blok` di backend).
 // ------------------------------------------------------------
-// Blok disimpan sebagai JSON, tapi memaksa admin mengetik JSON di
-// textarea adalah cara cepat membuat fitur ini tidak pernah dipakai.
-// Jadi form memakai bentuk baris sederhana "a | b | c" dan berkas ini
-// yang menerjemahkannya ke/dari JSON. Backend tetap memvalidasi ulang
-// hasilnya (lihat normalizeBlok di cms-api/worker.js) — parser di sini
-// urusan kenyamanan, bukan lapisan keamanan.
+// Blok disimpan sebagai JSON, dan form MENGETIK JSON itu langsung
+// (tab "B. Seksi") — bukan lagi dirakit dari input per-field seperti
+// versi sebelumnya. Ini lebih fleksibel (semua field tiap seksi bisa
+// diisi, bukan cuma yang disediakan formnya) dengan risiko: admin bisa
+// salah ketik JSON. Backend TETAP memvalidasi ulang bentuknya (lihat
+// normalizeBlok di cms-api/worker.js) — parser di sini cuma urusan
+// mengetahui "ini JSON sah atau tidak", bukan lapisan keamanan.
 // ============================================================
 
-/** Pecah teks banyak baris jadi array, buang baris kosong. */
-function barisTeks(v) {
-    return String(v || '').split('\n').map(x => x.trim()).filter(Boolean);
-}
-
-/** "a | b | c" -> ['a','b','c'] (bagian yang tidak diisi jadi string kosong). */
-function pecahKolom(baris, jumlah) {
-    const p = String(baris).split('|').map(x => x.trim());
-    return Array.from({ length: jumlah }, (_, i) => p[i] || '');
-}
-
-/** Ambil satu seksi bertipe tertentu dari array blok tersimpan. */
-function ambilSeksi(blok, section) {
-    return (blok || []).find(b => b.section === section) || null;
-}
-
-/** Baca kolom `blok` milik satu halaman (string JSON) jadi array objek. */
+/** Baca kolom `blok` milik satu halaman (string JSON) jadi array objek —
+ *  dipakai untuk mengisi textarea JSON saat form dibuka (pretty-printed). */
 function bacaBlok(hal) {
     if (!hal?.blok) return [];
     try { return JSON.parse(hal.blok); }
     catch (e) { return []; } // JSON rusak: perlakukan sebagai belum ada seksi
 }
 
-/** Rakit array blok dari isian form. Mengembalikan null kalau tidak ada isi. */
-function rakitBlok(form) {
-    const val = (name) => form.querySelector(`[name="${name}"]`)?.value.trim() ?? '';
-    const blok = [];
-
-    if (val('hero_judul')) {
-        const hero = {
-            section: 'hero',
-            title: val('hero_judul'),
-            tagline: val('hero_tagline'),
-            description: val('hero_deskripsi'),
-            badges: val('hero_badges').split(',').map(x => x.trim()).filter(Boolean),
-        };
-        if (val('hero_ikon')) hero.imgClass = val('hero_ikon');
-        if (val('hero_cta_teks') && val('hero_cta_link')) {
-            hero.cta = { text: val('hero_cta_teks'), link: val('hero_cta_link') };
-        }
-        blok.push(hero);
-    }
-
-    const items = barisTeks(form.querySelector('[name="fitur"]')?.value)
-        .map(b => {
-            const [icon, title, content, linkText, linkTarget] = pecahKolom(b, 5);
-            const item = { icon, title, content };
-            if (linkTarget) { item.linkTarget = linkTarget; item.linkText = linkText; }
-            return item;
-        })
-        .filter(it => it.title);
-    if (items.length) blok.push({ section: 'features', items });
-
-    const lines = barisTeks(form.querySelector('[name="penutup_baris"]')?.value);
-    if (val('penutup_judul') || lines.length) {
-        blok.push({ section: 'articleFull', subtitle: val('penutup_judul'), lines });
-    }
-
-    return blok.length ? blok : null;
+/** Baca & validasi (sintaks JSON saja, bukan isi) textarea seksi dari form.
+ *  Melempar Error dengan pesan yang bisa langsung ditunjukkan ke admin
+ *  kalau teksnya bukan array JSON yang sah. Mengembalikan null kalau
+ *  textarea dikosongkan (halaman tanpa seksi). */
+function bacaSeksiForm(form) {
+    const raw = form.querySelector('[name="seksiJson"]')?.value.trim() ?? '';
+    if (!raw) return null;
+    let arr;
+    try { arr = JSON.parse(raw); }
+    catch (e) { throw new Error('JSON pada tab "Seksi" tidak sah: ' + e.message); }
+    if (!Array.isArray(arr)) throw new Error('JSON pada tab "Seksi" harus berupa daftar/array (diawali "[" dan diakhiri "]").');
+    return arr;
 }
+
+// Contoh isian tab "Seksi" — ditampilkan sebagai placeholder textarea supaya
+// admin tidak mulai dari layar kosong. Hanya memuat seksi yang benar-benar
+// didukung backend (SECTION_TIPE di cms-api/worker.js): hero, features,
+// articleFull — lihat normalizeBlok untuk field apa saja yang diterima tiap seksi.
+const CONTOH_SEKSI_JSON = JSON.stringify([
+    {
+        section: 'hero',
+        title: 'Judul Besar Halaman',
+        tagline: 'Tagline singkat di bawah judul',
+        description: 'Deskripsi lebih panjang, satu-dua kalimat.',
+        badges: ['Badge Satu', 'Badge Dua'],
+        imgClass: 'di-piawai',
+        cta: { text: 'Teks Tombol', link: 'register' },
+    },
+    {
+        section: 'features',
+        items: [
+            { icon: 'di-cart', title: 'Judul Fitur', content: 'Deskripsi fitur.', linkText: 'Selengkapnya', linkTarget: 'artikel-list' },
+        ],
+    },
+    {
+        section: 'articleFull',
+        subtitle: 'Judul Bagian Penutup',
+        lines: ['Baris teks biasa.', 'link:Daftar sekarang:register', '---', 'link:Sudah punya akun? Masuk:login'],
+    },
+], null, 2);
 
 const halamanPage = {
     /** Buka drawer tambah (tanpa id) atau edit (dengan id). */
@@ -159,9 +148,6 @@ const halamanPage = {
         const isHome = hal?.slug === HOME_SLUG_ADMIN;
 
         const blok = bacaBlok(hal);
-        const hero = ambilSeksi(blok, 'hero');
-        const fitur = ambilSeksi(blok, 'features');
-        const penutup = ambilSeksi(blok, 'articleFull');
 
         // Semua halaman yang ada bisa jadi tujuan tautan, jadi daftarnya
         // dibangun dari data — bukan ditulis ulang tiap kali ada halaman baru.
@@ -191,41 +177,34 @@ const halamanPage = {
                 },
                 {
                     type: 'raw',
-                    html: `<div class="a-row"><small>Kedua bagian di bawah selalu tampil di form ini, tapi yang
-                        <strong>dirender ke pengunjung hanya yang sesuai tata letak terpilih</strong> — isian yang
-                        tidak dipakai tetap tersimpan, jadi aman berganti tata letak bolak-balik.</small></div>
-                        <hr><h3>A. Isi untuk tata letak "Konten"</h3>`,
+                    html: `<div class="a-row"><small>Kedua tab di bawah selalu tersimpan bersamaan, tapi yang
+                        <strong>dirender ke pengunjung hanya yang sesuai tata letak terpilih</strong> di atas — isian
+                        di tab yang tidak dipakai tetap tersimpan, jadi aman berpindah tata letak bolak-balik.</small></div>
+                        <div class="tab-bar">
+                            <div class="a-tab active" onclick="web.switchFormTab(this,'konten')">A. Konten</div>
+                            <div class="a-tab" onclick="web.switchFormTab(this,'seksi')">B. Seksi (JSON)</div>
+                        </div>
+                        <div class="tab-content" data-tab="konten">`,
                 },
                 { type: 'textarea', name: 'konten', label: 'Konten (HTML dasar: &lt;p&gt;, &lt;h2&gt;, &lt;strong&gt;, &lt;a&gt;, dst.)', rows: 8, value: hal?.konten },
                 { type: 'text', name: 'coverImage', label: 'URL Gambar Sampul (opsional)', value: hal?.coverImage },
-
-                { type: 'raw', html: `<hr><h3>B. Isi untuk tata letak "Seksi"</h3><div class="a-row"><small>Seksi <em>hero</em> adalah spanduk paling atas; kosongkan judulnya kalau tidak ingin memakainya.</small></div>` },
-                { type: 'text', name: 'hero_judul', label: 'Hero — judul besar', value: hero?.title || '', maxlength: 120 },
-                { type: 'text', name: 'hero_tagline', label: 'Hero — tagline singkat', value: hero?.tagline || '', maxlength: 120 },
-                { type: 'textarea', name: 'hero_deskripsi', label: 'Hero — deskripsi', rows: 2, value: hero?.description || '', maxlength: 400 },
-                { type: 'text', name: 'hero_badges', label: 'Hero — badge (pisahkan dengan koma, maks 6)', value: (hero?.badges || []).join(', ') },
-                { type: 'text', name: 'hero_ikon', label: 'Hero — kelas ikon', value: hero?.imgClass || '', placeholder: 'mis. di-piawai, di-cart, di-edu' },
-                { type: 'text', name: 'hero_cta_teks', label: 'Hero — teks tombol', value: hero?.cta?.text || '', maxlength: 60 },
-                { type: 'select', name: 'hero_cta_link', label: 'Hero — tujuan tombol', value: hero?.cta?.link || '', options: tujuan },
+                { type: 'raw', html: '</div>' }, // tutup tab "konten"
 
                 {
                     type: 'raw',
-                    html: `<div class="a-row"><small><strong>Format tiap baris fitur:</strong>
-                        <code>ikon | judul | deskripsi | teks tautan | tujuan tautan</code><br>
-                        Tiga kolom terakhir boleh dikosongkan. Tujuan tautan memakai nilai yang sama dengan tombol hero
-                        (mis. <code>artikel-list</code>, <code>penulis</code>, <code>laman/tentang</code>).</small></div>`,
+                    html: `<div class="tab-content" data-tab="seksi" style="display:none">
+                        <div class="a-row"><small>Susun seksi landing page sebagai <strong>array JSON</strong>.
+                        Seksi yang dikenal backend: <code>hero</code>, <code>features</code>, <code>articleFull</code>
+                        — seksi/field lain akan ditolak saat disimpan. Tujuan tautan (<code>cta.link</code> /
+                        <code>linkTarget</code> / baris <code>link:...</code>) yang sah:
+                        ${tujuan.map(t => `<code>${escHtml(t.value)}</code>`).join(', ')}.</small></div>`,
                 },
                 {
-                    type: 'textarea', name: 'fitur', label: 'Fitur (satu per baris, maks 12)', rows: 7,
-                    value: (fitur?.items || []).map(it => [it.icon || '', it.title || '', it.content || '', it.linkText || '', it.linkTarget || ''].join(' | ').replace(/( \| )+$/, '')).join('\n'),
-                    placeholder: 'di-cart | POS Piawai | Kasir untuk usaha kecil | Selengkapnya | laman/pos-piawai',
+                    type: 'textarea', name: 'seksiJson', label: 'Seksi (array JSON)', rows: 18,
+                    value: blok.length ? JSON.stringify(blok, null, 2) : '',
+                    placeholder: CONTOH_SEKSI_JSON,
                 },
-                { type: 'text', name: 'penutup_judul', label: 'Penutup — judul bagian', value: penutup?.subtitle || '', maxlength: 120 },
-                {
-                    type: 'textarea', name: 'penutup_baris', label: 'Penutup — isi (satu baris per entri)', rows: 5,
-                    value: (penutup?.lines || []).join('\n'),
-                    placeholder: 'Teks biasa\nlink:Daftar sekarang:register\n---\nlink:Sudah punya akun? Masuk:login',
-                },
+                { type: 'raw', html: '</div>' }, // tutup tab "seksi"
 
                 { type: 'raw', html: '<hr>' },
                 { type: 'number', name: 'urutan', label: 'Urutan tampil', value: hal?.urutan ?? 0, step: 1 },
@@ -246,6 +225,13 @@ const halamanPage = {
         const id = val('id');
         const judul = val('judul');
 
+        // Divalidasi sintaksnya di sini supaya kesalahan ketik JSON ketahuan
+        // sebelum request dikirim — tapi bentuk ISINYA (nama seksi, field
+        // wajib, dst.) tetap ditentukan backend (normalizeBlok di worker.js).
+        let blok;
+        try { blok = bacaSeksiForm(form); }
+        catch (e) { alert(e.message); return; }
+
         const payload = {
             judul,
             ringkasan: val('ringkasan'),
@@ -253,7 +239,7 @@ const halamanPage = {
             coverImage: val('coverImage'),
             urutan: Number(val('urutan')) || 0,
             tataLetak: val('tataLetak') || 'konten',
-            blok: rakitBlok(form),
+            blok,
         };
         // Field slug & status absen saat mengedit halaman depan (dikunci di
         // backend) — jangan kirim key-nya sama sekali daripada mengirim
