@@ -18,7 +18,7 @@
 
 // GANTI dengan URL hasil `wrangler deploy` di repo cms-api, tanpa slash
 // di akhir. Contoh: 'https://cms-api.namaakun.workers.dev'
-const API_BASE = 'https://cms-api.piawai.workers.dev';
+const API_BASE = 'https://piawai-api.piawai.workers.dev';
 
 const SCOPED_TABLES = new Set(['post']); // `users` & `komentar` tidak lagi diakses lewat /api
 
