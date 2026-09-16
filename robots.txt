@@ -1,0 +1,21 @@
+# Rute admin dirujuk sebagai query string (?dashboard, ?editor/<id>, dst),
+# bukan path — lihat engine.js. Aturan lama ("Disallow: /dashboard") sudah
+# tidak cocok dengan URL apa pun, jadi diganti bentuk query di bawah.
+User-agent: *
+Disallow: /?login
+Disallow: /?register
+Disallow: /?dashboard
+Disallow: /?editor
+Disallow: /?postingan
+Disallow: /?profil
+Disallow: /?cms
+Disallow: /?halaman
+Disallow: /?menu
+
+# Halaman publik yang memang ingin diindeks.
+Allow: /?profile
+Allow: /?user
+Allow: /?artikel
+Allow: /?penulis
+Allow: /?laman
+Allow: /

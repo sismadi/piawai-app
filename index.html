@@ -1,1 +1,177 @@
-piawai nih bos, senggol dong
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="description" content="Piawai — tiga aplikasi hasil Pengabdian kepada Masyarakat: CMS Piawai, LMS Piawai, dan POS Piawai. Baca artikel dari para penulis, atau masuk untuk mengelola CMS Anda sendiri.">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+    <!-- Shell tunggal ini sekarang menyajikan halaman PUBLIK (beranda,
+         ?profile/<kodeCms>, ?user/<kodeCms>/<slug>) DAN admin (?login,
+         ?dashboard, ?editor/<id>, dst) — lihat engine.js & pages/public.js.
+         Karena semua rute lewat query string di satu file, tidak ada lagi
+         pembagian "app.html vs index.html" seperti versi Worker sebelumnya. -->
+    <title>Piawai</title>
+    <!-- [PERF] Preconnect ke origin API (dipisah dari frontend, lihat db.js) —
+         browser membuka koneksi DNS+TLS lebih awal, jadi fetch data halaman
+         pertama tidak menunggu handshake baru saat itu juga. -->
+    <link rel="preconnect" href="https://cms-api.piawai.workers.dev">
+    <link rel="dns-prefetch" href="https://cms-api.piawai.workers.dev">
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <link rel="stylesheet" type="text/css" href="svg.css">
+    <!-- [SECURITY] Captcha login/registrasi kini captcha matematika kustom
+         (soal diminta ke server, diverifikasi di server juga) — tidak ada
+         lagi script pihak ketiga yang perlu dimuat di sini. Lihat auth.js. -->
+</head>
+<body>
+
+  <!-- [PERF] Progress bar navigasi tipis — lihat web.startProgress/finishProgress di engine.js -->
+  <div id="navProgress"></div>
+
+  <div class="main" id="body">
+    <div id="stickyHeaderWrap">
+    <div class="row header">
+        <div class="kiri">
+            <a href="/" onclick="web.navigate({page:'home'}); return false;" style="color:inherit;text-decoration:none;">
+                <span class="orange">Piawai</span>
+                <span class="orange sub">Aplikasi PkM</span>
+            </a>
+        </div>
+        <div class="kanan">
+            <div id="authSlot" class="auth-slot"></div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="menu-bar" id="stickyMenu">
+            <div class="burger" id="burgerBtn">&#9776;</div>
+            <nav class="nav-links" id="navLinks"></nav>
+        </div>
+    </div>
+    </div>
+
+<div id="content"></div>
+
+<!-- FORM DRAWER — panel geser dari kanan, dipakai ulang oleh SEMUA form
+     tambah/edit (artikel, profil CMS, kelola CMS). -->
+<div id="formDrawerOverlay" class="form-drawer-overlay" onclick="web.closeDrawer()"></div>
+<div id="formDrawerPanel" class="form-drawer" role="dialog" aria-modal="true" aria-labelledby="formDrawerTitle">
+    <div class="form-drawer-header">
+        <span class="form-drawer-header-title" id="formDrawerTitle"></span>
+        <button type="button" class="form-drawer-close" onclick="web.closeDrawer()">&times; Tutup</button>
+    </div>
+    <div class="form-drawer-body" id="formDrawerBody"></div>
+</div>
+
+<div class="row footer">
+    <div class="kiri">Piawai &mdash; CMS, LMS &amp; POS</div>
+    <div class="kanan">&nbsp; &copy; 2026</div>
+</div>
+
+</div>
+
+<script type="text/javascript" src="svg.js"></script>
+<script type="text/javascript" src="engine.js"></script>
+<script type="text/javascript" src="db.js"></script>
+<script type="text/javascript" src="auth.js"></script>
+
+<script type="text/javascript">
+if (typeof svg !== 'undefined') svg.di();
+</script>
+
+<script type="text/javascript">
+// ============================================================
+// renderMenu() — bilah navigasi = MENU PUBLIK (dinamis) + MENU ADMIN (statis).
+// ------------------------------------------------------------
+// Menu publik dibuat superadmin lewat halaman "Kelola Menu" dan diambil
+// dari backend (db.publicMenu()), termasuk satu tingkat submenu. Menu
+// admin tetap dari siteConfig (dataset.js), disaring berdasar status
+// login (guestOnly) & peran (role) — daftar itu ditentukan developer dan
+// tidak masuk akal diserahkan ke basis data.
+//
+// Fungsi ini ASYNC karena bagian publiknya menunggu fetch. Pemanggilnya
+// (load awal, setelah login/logout, setelah menu/halaman disunting) tidak
+// perlu menunggu: navigasi halaman berjalan paralel, dan bilah menu
+// menyusul begitu datanya sampai.
+//
+// [SECURITY] Label & target menu diketik admin lalu disisipkan ke HTML di
+// sini — semuanya WAJIB lewat escHtml() (lihat engine.js). Tautan `url`
+// dirender sebagai <a href> biasa ke situs luar, jadi href-nya juga
+// di-escape dan diberi rel="noopener noreferrer".
+// ============================================================
+
+/** Ubah satu entri menu dari backend jadi href + apakah dia tautan luar. */
+function menuHref(item) {
+    if (item.tipe === 'url') return { href: item.target || '#', luar: true };
+    if (item.tipe === 'rute') return { href: web.href({ page: item.target }), luar: false, nav: { page: item.target } };
+    // tipe 'halaman': slug beranda = halaman depan, jadi arahkan ke "/"
+    // alih-alih "?laman/beranda" supaya alamat utama situs tetap bersih.
+    const nav = item.target === 'beranda' ? { page: 'home' } : { page: 'laman', slug: item.target };
+    return { href: web.href(nav), luar: false, nav };
+}
+
+function menuAnchor(item, className) {
+    const { href, luar, nav } = menuHref(item);
+    const label = escHtml(item.label);
+    const cls = className ? ` class="${className}"` : '';
+    if (luar) return `<a href="${escHtml(href)}"${cls} target="_blank" rel="noopener noreferrer">${label}</a>`;
+    return `<a href="${escHtml(href)}"${cls} onclick='web.navigate(${JSON.stringify(nav)}); return false;'>${label}</a>`;
+}
+
+async function renderMenu() {
+    const navLinks = document.getElementById('navLinks');
+    if (!navLinks) return;
+
+    const user = (typeof auth !== 'undefined') ? auth.currentUser() : null;
+    const visible = p => (!p.guestOnly || !user) && (!p.role || (user && p.role.includes(user.role)));
+
+    const adminHtml = siteConfig
+        .filter(p => p.menu && visible(p))
+        .map(p => `<a href="${web.href(p.slug)}" onclick="web.navigate('${p.slug}'); return false;">${p.label}</a>`)
+        .join('\n');
+
+    // Menu admin dirender LEBIH DULU supaya tombol Masuk/Dashboard tidak
+    // menunggu jaringan; menu publik ditambal di depannya setelah tiba.
+    navLinks.innerHTML = adminHtml;
+    if (typeof auth !== 'undefined') auth.renderAuthUI();
+
+    let daftar = [];
+    try { ({ menu: daftar } = await db.publicMenu()); }
+    catch (e) {
+        // Backend bermasalah bukan alasan menghapus navigasi admin yang
+        // sudah tampil — biarkan apa adanya dan cukup catat di konsol.
+        console.error('Gagal memuat menu publik:', e);
+        return;
+    }
+
+    const publikHtml = daftar.map(item => {
+        const anak = item.children || [];
+        if (!anak.length) return menuAnchor(item);
+
+        // Punya submenu -> dropdown (.nav-parent/.nav-children sudah ada di
+        // style.css). Menu bertipe `induk` tidak menuju ke mana-mana, jadi
+        // labelnya hanya membuka/menutup dropdown; menu bertipe lain yang
+        // kebetulan punya anak tetap bisa diklik ke tujuannya sendiri —
+        // dropdown-nya terbuka lewat hover (desktop) atau ketuk induknya.
+        const labelHtml = item.tipe === 'induk'
+            ? `<span class="nav-parent-label" onclick="web.toggleSubmenu(this)">${escHtml(item.label)} <span class="nav-caret">&#9660;</span></span>`
+            : menuAnchor(item, 'nav-parent-label');
+
+        return `<div class="nav-parent">
+            ${labelHtml}
+            <div class="nav-children">${anak.map(a => menuAnchor(a)).join('\n')}</div>
+        </div>`;
+    }).join('\n');
+
+    navLinks.innerHTML = publikHtml + '\n' + adminHtml;
+}
+</script>
+
+<script src="dataset.js"></script>
+<script>
+    loadPageScripts(pageFiles, () => {
+        renderMenu();
+        web.navigate(); // [PERF] render pertama di sini, bukan di window.onload — lihat komentar di engine.js
+    });
+</script>
+
+</body>
+</html>
