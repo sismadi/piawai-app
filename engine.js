@@ -172,6 +172,22 @@ const web = {
         document.body.classList.remove('drawer-lock');
     },
 
+    /** Ganti tab aktif di dalam SATU form (dipakai form apa pun yang butuh
+     *  memisah isian jadi beberapa tab, mis. pages/halaman.js). Markup yang
+     *  diharapkan: satu `.tab-bar` berisi elemen `.a-tab` (onclick memanggil
+     *  fungsi ini), diikuti beberapa `.tab-content[data-tab="..."]` di
+     *  dalam form yang sama. Murni tampilan (show/hide) — TIDAK menghapus
+     *  nilai input di tab yang sedang disembunyikan, jadi aman bolak-balik
+     *  tab tanpa kehilangan isian. */
+    switchFormTab: function (tabEl, tabName) {
+        const form = tabEl?.closest('form');
+        if (!form) return;
+        form.querySelectorAll('.tab-content').forEach(el => {
+            el.style.display = el.dataset.tab === tabName ? '' : 'none';
+        });
+        form.querySelectorAll('.a-tab').forEach(el => el.classList.toggle('active', el === tabEl));
+    },
+
     /** Jembatan generik: buka drawer langsung dari config form { title, fields, onSubmit, submitText }. */
     openFormFromPage: function (cfg, opts = {}) {
         if (!cfg || !cfg.fields) { alert(opts.title || 'Tidak dapat membuka form'); return; }
