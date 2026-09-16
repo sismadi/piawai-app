@@ -479,13 +479,18 @@ const components = {
         const media = d.img
             ? `<img src="${d.img}" alt="${d.title}" class="img-hero">`
             : d.imgClass
-                ? `<i style="max-width:300px;" class="${d.imgClass} kanan img"></i>`
+                ? `<i class="${d.imgClass} kanan img hero-icon"></i>`
                 : '';
+        // Tagline & deskripsi keduanya opsional (halaman buatan admin belum
+        // tentu mengisi semuanya) — jangan tinggalkan em-dash menggantung
+        // atau baris kosong kalau salah satunya tidak ada.
+        const teks = [d.tagline ? `<em>${d.tagline}</em>` : '', d.description || '']
+            .filter(Boolean).join(' &mdash; ');
         return `
             <div class="row page hero">
                 <div class="col-2-3 artikel">
                     <h1>${d.title}</h1><br>
-                    <em>${d.tagline || ''}</em> &mdash; ${d.description || ''}<br><br>
+                    ${teks ? `${teks}<br><br>` : ''}
                     ${(d.badges || []).map(b => `<span class="badge">${b}</span>`).join(' ')}
                     <br><br>
                     ${d.cta ? `<a href="${web.href(d.cta.link)}" onclick="web.navigate('${d.cta.link}'); return false;" class="btn-cta">${d.cta.text}</a>` : ''}
@@ -501,7 +506,7 @@ const components = {
                     <i class="${item.icon} simg"></i>
                     <span class="judul">${item.title}</span><br>
                     <p>${item.content}</p>
-                    ${item.linkTarget ? `<a href="javascript:void(0)" onclick="web.navigate('${item.linkTarget}')">${item.linkText}</a>` : ''}
+                    ${item.linkTarget ? `<a href="${web.href(item.linkTarget)}" onclick="web.navigate('${item.linkTarget}'); return false;">${item.linkText}</a>` : ''}
                 </div>`).join('')}
         </div>`,
 

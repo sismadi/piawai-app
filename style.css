@@ -172,6 +172,15 @@ a:hover { text-decoration: underline; }
 .page4  { background: #ffffff; padding: 10px 0; }
 .gading { background: #F2F3EB; padding: 10px 0; }
 
+/* Baris kartu (fitur landing page, daftar penulis, daftar artikel) memakai
+   flex, bukan float seperti .col-* pada umumnya. Alasannya: tinggi tiap
+   kartu berbeda-beda, dan dengan float kartu berikutnya tersangkut di
+   bawah kartu TERTINGGI alih-alih memulai baris baru yang rapi — itu yang
+   membuat grid fitur terlihat berantakan. Hanya baris ini yang diubah,
+   jadi tata letak kolom di halaman lain tidak ikut terpengaruh. */
+.row.gading { display: flex; flex-wrap: wrap; align-items: stretch; }
+.row.gading > [class*='col-'] { float: none; }
+
 .artikel {
   padding: 20px 30px;
   font-family: var(--font-serif);
@@ -187,6 +196,10 @@ a:hover { text-decoration: underline; }
 .hero h1 { font-size: 56px; line-height: 1; }
 
 .img       { width: 100%; height: auto; }
+/* Ikon dekoratif di seksi hero. Batas lebarnya ditaruh di sini, bukan
+   sebagai style inline di komponen (engine.js), supaya media query di
+   bawah bisa menimpanya untuk layar kecil. */
+.hero-icon { max-width: 300px; }
 .img svg   { width: 100%; height: auto; fill: white; }
 .img svg path { fill: white; stroke: none; }
 
@@ -468,6 +481,10 @@ input:not([type=checkbox]):not([type=radio]), select, textarea {
 
   [class*='col-'] { width: 100% !important; }
   .hero h1        { font-size: 36px; }
+  /* Ikon hero murni dekoratif; di lebar penuh ia memakan hampir satu layar
+     sendiri sebelum pengunjung sampai ke daftar fitur. Dikecilkan, bukan
+     dihilangkan, supaya identitas visualnya tetap ada. */
+  .hero-icon { max-width: 160px; margin: 0 auto; }
 }
 
 

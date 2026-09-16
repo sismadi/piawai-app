@@ -137,6 +137,67 @@ function artikelLink(kode, slug, label) {
 // ============================================================
 const HOME_SLUG = 'beranda';
 
+// ============================================================
+// [SECURITY] Seksi halaman (hero / features / articleFull) ditulis admin,
+// tapi komponen di engine.js menyisipkan nilainya LANGSUNG ke template
+// HTML (`<h1>${d.title}</h1>`) karena aslinya hanya dipakai untuk konten
+// statis buatan developer. Jadi SEMUA teks dari backend di-escape di sini
+// sebelum diserahkan ke komponen, dan tautannya dibangun ulang dari
+// daftar target yang sudah divalidasi backend — bukan dipakai mentah.
+// ============================================================
+
+/** Ubah satu baris `articleFull.lines` dari backend jadi HTML yang sudah aman. */
+function seksiBaris(line) {
+    if (line === '---') return '---';
+
+    const heading = String(line).match(/^(#{2,3})\s+(.*)$/);
+    if (heading) return `${heading[1]} ${esc(heading[2])}`;
+
+    const link = String(line).match(/^link:([^:]+):(.+)$/);
+    if (link) {
+        // Dirakit sendiri jadi <a>, bukan diserahkan ke handler 'link:' di
+        // lineRenderer — handler itu menaruh target mentah ke dalam atribut
+        // onclick, dan target di sini berasal dari basis data.
+        const href = web.href(link[2]);
+        return `<a href="${esc(href)}" onclick='web.navigate(${JSON.stringify(link[2])}); return false;' class="inline-link">${esc(link[1])} &raquo;</a>`;
+    }
+    return esc(line);
+}
+
+/** Ubah array `blok` dari backend jadi array section siap-render ui.render(). */
+function seksiHalaman(blok) {
+    return blok.map(b => {
+        if (b.section === 'hero') {
+            return {
+                section: 'hero',
+                title: esc(b.title),
+                tagline: esc(b.tagline || ''),
+                description: esc(b.description || ''),
+                badges: (b.badges || []).map(esc),
+                imgClass: b.imgClass ? esc(b.imgClass) : '',
+                cta: b.cta ? { text: esc(b.cta.text), link: b.cta.link } : null,
+            };
+        }
+        if (b.section === 'features') {
+            return {
+                section: 'features',
+                items: (b.items || []).map(it => ({
+                    icon: esc(it.icon || 'di-icon'),
+                    title: esc(it.title),
+                    content: esc(it.content || ''),
+                    linkText: it.linkText ? esc(it.linkText) : '',
+                    linkTarget: it.linkTarget || '',
+                })),
+            };
+        }
+        return {
+            section: 'articleFull',
+            subtitle: esc(b.subtitle || ''),
+            lines: (b.lines || []).map(seksiBaris),
+        };
+    });
+}
+
 async function renderHalaman(slug, { isHome = false } = {}) {
     let halaman;
     try { ({ halaman } = await db.publicHalaman(slug)); }
@@ -153,6 +214,12 @@ async function renderHalaman(slug, { isHome = false } = {}) {
         return [{ section: 'titleHero', title: 'Halaman Tidak Ditemukan', description: esc(e.message) }];
     }
 
+    // Tata letak 'seksi' — landing page berblok (hero, fitur, penutup).
+    if (halaman.tataLetak === 'seksi' && Array.isArray(halaman.blok) && halaman.blok.length) {
+        return seksiHalaman(halaman.blok);
+    }
+
+    // Tata letak 'konten' — satu blok HTML, cocok untuk halaman teks panjang.
     const html = `
         <div class="row page">
             <div class="artikel">
